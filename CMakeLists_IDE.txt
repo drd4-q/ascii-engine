@@ -1,0 +1,146 @@
+cmake_minimum_required(VERSION 3.10)
+project(ascii_engine_ide)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Опции сборки
+option(BUILD_EDITOR "Build with Editor/IDE support" ON)
+option(BUILD_GAME_ONLY "Build game only (no editor)" OFF)
+
+# Оптимизация для минимального размера
+if(MSVC)
+    add_compile_options(/O1 /Os)
+else()
+    add_compile_options(-O2 -Os)
+endif()
+
+# Поиск библиотек
+find_package(SDL2 REQUIRED)
+find_package(Lua REQUIRED)
+
+# Дополнительные зависимости для редактора
+if(BUILD_EDITOR AND NOT BUILD_GAME_ONLY)
+    find_package(OpenGL REQUIRED)
+    find_package(SDL2_ttf REQUIRED)
+endif()
+
+# Включаемые директории
+include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/audio
+    ${SDL2_INCLUDE_DIRS}
+    ${LUA_INCLUDE_DIR}
+)
+
+# Основной код движка
+set(ENGINE_SOURCES
+    src/main.cpp
+    src/Engine.cpp
+    src/Renderer.cpp
+    src/LuaAPI.cpp
+)
+
+# Аудио компоненты
+set(AUDIO_SOURCES
+    audio/AudioSynthesizer.cpp
+    include/font/FontManager.cpp
+)
+
+# Компоненты редактора
+if(BUILD_EDITOR AND NOT BUILD_GAME_ONLY)
+    set(EDITOR_SOURCES
+        editor/src/EditorUI.cpp
+        editor/src/SceneManager.cpp
+        build_system/AndroidBuilder.cpp
+        ${AUDIO_SOURCES}
+    )
+    
+    include_directories(
+        ${CMAKE_CURRENT_SOURCE_DIR}/editor/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/build_system
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/font
+    )
+endif()
+
+# Проверка ImGui
+if(BUILD_EDITOR AND NOT BUILD_GAME_ONLY)
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui")
+        message(WARNING "ImGui not found in external/imgui")
+        message(STATUS "Please download ImGui from https://github.com/ocornut/imgui")
+    else()
+        include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/imgui)
+        set(IMGUI_SOURCES
+            external/imgui/imgui.cpp
+            external/imgui/imgui_demo.cpp
+            external/imgui/imgui_draw.cpp
+            external/imgui/imgui_tables.cpp
+            external/imgui/imgui_widgets.cpp
+            external/imgui/backends/imgui_impl_sdl2.cpp
+            external/imgui/backends/imgui_impl_opengl3.cpp
+        )
+    endif()
+endif()
+
+# Создание исполняемого файла
+if(BUILD_EDITOR AND NOT BUILD_GAME_ONLY)
+    add_executable(ascii_engine_editor
+        src/main_ide.cpp
+        ${ENGINE_SOURCES}
+        ${EDITOR_SOURCES}
+        ${IMGUI_SOURCES}
+    )
+    
+    target_link_libraries(ascii_engine_editor
+        ${SDL2_LIBRARIES}
+        ${LUA_LIBRARIES}
+        ${OPENGL_LIBRARIES}
+        SDL2_ttf::SDL2_ttf
+    )
+else()
+    add_executable(ascii_engine ${ENGINE_SOURCES} ${AUDIO_SOURCES})
+    
+    target_link_libraries(ascii_engine
+        ${SDL2_LIBRARIES}
+        ${LUA_LIBRARIES}
+    )
+endif()
+
+# Копирование assets
+if(BUILD_EDITOR AND NOT BUILD_GAME_ONLY)
+    add_custom_command(TARGET ascii_engine_editor POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets
+        ${CMAKE_CURRENT_BINARY_DIR}/assets
+        COMMENT "Copying assets to build directory"
+    )
+else()
+    add_custom_command(TARGET ascii_engine POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets
+        ${CMAKE_CURRENT_BINARY_DIR}/assets
+        COMMENT "Copying assets to build directory"
+    )
+endif()
+
+# Windows специфичное
+if(WIN32)
+    if(BUILD_EDITOR AND NOT BUILD_GAME_ONLY)
+        set_property(DIRECTORY APPEND PROPERTY VS_STARTUP_PROJECT ascii_engine_editor)
+    else()
+        set_property(DIRECTORY APPEND PROPERTY VS_STARTUP_PROJECT ascii_engine)
+    endif()
+endif()
+
+# Информация о сборке
+message(STATUS "=== Milk Inside Lite Engine Build Configuration ===")
+message(STATUS "CMake Version: ${CMAKE_VERSION}")
+message(STATUS "CXX Standard: ${CMAKE_CXX_STANDARD}")
+message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "Build Editor: ${BUILD_EDITOR}")
+message(STATUS "Build Game Only: ${BUILD_GAME_ONLY}")
+if(BUILD_EDITOR AND NOT BUILD_GAME_ONLY)
+    message(STATUS "Target: ascii_engine_editor (IDE Mode)")
+else()
+    message(STATUS "Target: ascii_engine (Game Mode)")
+endif()
